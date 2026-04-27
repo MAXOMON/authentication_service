@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # SECURITY
     ALGORITHM: str = "HS256"
-    SECRET_KEY: str = ""
+    SECRET_KEY: str
 
     # DATABASE
     DB_DRIVER_NAME: str = "postgresql+asyncpg"
