@@ -2,11 +2,9 @@ import asyncio
 import os
 
 import asyncpg
-import pytest
 import pytest_asyncio
 import redis.asyncio as redis
 from asgi_lifespan import LifespanManager
-from fastapi_limiter import FastAPILimiter
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -47,102 +45,104 @@ from app.models.db_tables import Base
 pytest_plugins = [
     "tests.fixtures.users",
     "tests.fixtures.tokens",
+    "tests.fixtures.user_session",
+    "tests.fixtures.users",
 ]
 
+if not settings.CI:
+    @pytest_asyncio.fixture(scope="session")
+    async def docker_postgres():
+        """Запусти POSTGRES в docker и проверь готовность!"""
+        container_name = "test_postgresql_temp"
+        process_start = await asyncio.create_subprocess_exec(
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "-e",
+            f"POSTGRES_USER={PSQL_TEST_USERNAME}",
+            "-e",
+            f"POSTGRES_PASSWORD={PSQL_TEST_PASSWORD}",
+            "-e",
+            f"POSTGRES_DB={PSQL_TEST_DB_NAME}",
+            "-p",
+            f"{PSQL_TEST_PORT}:5432",
+            "--rm",
+            "postgres:15",
+        )
+        await process_start.wait()
 
-@pytest_asyncio.fixture(scope="session")
-async def docker_postgres():
-    """Запусти POSTGRES в docker и проверь готовность!"""
-    container_name = "test_postgresql_temp"
-    process_start = await asyncio.create_subprocess_exec(
-        "docker",
-        "run",
-        "-d",
-        "--name",
-        container_name,
-        "-e",
-        f"POSTGRES_USER={PSQL_TEST_USERNAME}",
-        "-e",
-        f"POSTGRES_PASSWORD={PSQL_TEST_PASSWORD}",
-        "-e",
-        f"POSTGRES_DB={PSQL_TEST_DB_NAME}",
-        "-p",
-        f"{PSQL_TEST_PORT}:5432",
-        "--rm",
-        "postgres:15",
-    )
-    await process_start.wait()
+        # проверка готовности
+        for _ in range(30):
+            try:
+                connection = await asyncpg.connect(
+                    user=PSQL_TEST_USERNAME,
+                    password=PSQL_TEST_PASSWORD,
+                    database=PSQL_TEST_DB_NAME,
+                    host="localhost",
+                    port=PSQL_TEST_PORT,
+                )
+                await connection.close()
+                break
+            except Exception:
+                await asyncio.sleep(1)
+        else:
+            raise RuntimeError("PostgreSQL не запустился")
 
-    # проверка готовности
-    for _ in range(30):
-        try:
-            connection = await asyncpg.connect(
-                user=PSQL_TEST_USERNAME,
-                password=PSQL_TEST_PASSWORD,
-                database=PSQL_TEST_DB_NAME,
-                host="localhost",
-                port=PSQL_TEST_PORT,
-            )
-            await connection.close()
-            break
-        except Exception:
-            await asyncio.sleep(1)
-    else:
-        raise RuntimeError("PostgreSQL не запустился")
+        yield
 
-    yield
-
-    process_stop = await asyncio.create_subprocess_exec(
-        "docker", "stop", container_name
-    )
-    await process_stop.wait()
-
-
-@pytest_asyncio.fixture(scope="session")
-async def docker_redis():
-    """Запусти Redis в docker и проверь готовность!"""
-    container_name = "test_redis_temp"
-    process_start = await asyncio.create_subprocess_exec(
-        "docker",
-        "run",
-        "-d",
-        "--name",
-        container_name,
-        "-p",
-        f"{REDIS_TEST_PORT}:6379",
-        "--rm",
-        "redis:7-alpine",
-    )
-    await process_start.wait()
-
-    # проверка готовности
-
-    for _ in range(30):
-        try:
-            client = redis.from_url(REDIS_TEST_URL)
-            await client.ping()
-            await client.aclose()
-            break
-        except Exception:
-            await asyncio.sleep(1)
-    else:
-        raise RuntimeError("Redis не запустился")
-
-    yield
-
-    process_stop = await asyncio.create_subprocess_exec(
-        "docker", "stop", container_name
-    )
-
-    await process_stop.wait()
+        process_stop = await asyncio.create_subprocess_exec(
+            "docker", "stop", container_name
+        )
+        await process_stop.wait()
 
 
-# @pytest.fixture(scope="session")
-# def event_loop():
-#     """Создай цикл событий для всей сессии тестов"""
-#     loop = asyncio.get_event_loop_policy().new_event_loop()
-#     yield loop
-#     loop.close()
+    @pytest_asyncio.fixture(scope="session")
+    async def docker_redis():
+        """Запусти Redis в docker и проверь готовность!"""
+        container_name = "test_redis_temp"
+        process_start = await asyncio.create_subprocess_exec(
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "-p",
+            f"{REDIS_TEST_PORT}:6379",
+            "--rm",
+            "redis:7-alpine",
+        )
+        await process_start.wait()
+
+        # проверка готовности
+
+        for _ in range(30):
+            try:
+                client = redis.from_url(REDIS_TEST_URL)
+                await client.ping()
+                await client.aclose()
+                break
+            except Exception:
+                await asyncio.sleep(1)
+        else:
+            raise RuntimeError("Redis не запустился")
+
+        yield
+
+        process_stop = await asyncio.create_subprocess_exec(
+            "docker", "stop", container_name
+        )
+
+        await process_stop.wait()
+else:
+    @pytest_asyncio.fixture(scope="session")
+    async def docker_postgres():
+        yield
+    
+    @pytest_asyncio.fixture(scope="session")
+    async def docker_redis():
+        yield
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -156,11 +156,6 @@ async def test_engine(docker_postgres):
     engine = create_async_engine(PSQL_TEST_DB_URL, echo=True)
     yield engine
     await engine.dispose()
-    # async with engine.begin() as conn:
-    #     await conn.run_sync(Base.metadata.drop_all)
-    #     await conn.run_sync(Base.metadata.create_all)
-    # yield engine
-    # await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -195,12 +190,10 @@ async def override_get_session(session):
 
 
 @pytest_asyncio.fixture(autouse=True)
-# @pytest_asyncio.fixture
 async def clear_redis():
     redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
     await redis_client.flushall()
     await redis_client.aclose()
-    # yield
 
 
 @pytest_asyncio.fixture(scope="session")

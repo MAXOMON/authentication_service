@@ -7,42 +7,42 @@ class Settings(BaseSettings):
     _secret_key: str | None = None
 
     # MAIN
-    DEBUG: bool
+    DEBUG: bool = True
+    CI: bool = True
 
     # SECURITY
-    ALGORITHM: str
+    ALGORITHM: str = "HS256"
     SECRET_KEY: str = ""
 
     # DATABASE
-
-    DB_DRIVER_NAME: str
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
-    POSTGRES_IP_ADDRESS: str
-    POSTGRES_PORT: int
-    POSTGRES_DB: str
-    DATABASE_URL: str
+    DB_DRIVER_NAME: str = "postgresql+asyncpg"
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_IP_ADDRESS: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "auth_service"
+    DATABASE_URL: str = ""
 
     # REDIS
-    REDIS_PASSWORD: str
-    REDIS_PORT: int
-    REDIS_URL: str
+    REDIS_PASSWORD: str = ""
+    REDIS_PORT: int = 6379
+    REDIS_URL: str = ""
 
     # JWT
-    ACCESS_COOKIE_NAME: str
-    ACCESS_TOKEN_EXPIRES_MINUTES: int
-    REFRESH_COOKIE_NAME: str
-    REFRESH_TOKEN_EXPIRES_MINUTES: int
-    SESSION_COOKIE_SECURE: bool
-    SAMESITE: str
-    SESSION_COOKIE_DOMAIN: str
-    MAX_SESSIONS: int
+    ACCESS_COOKIE_NAME: str = "access_token"
+    ACCESS_TOKEN_EXPIRES_MINUTES: int = 15
+    REFRESH_COOKIE_NAME: str = "refresh_token"
+    REFRESH_TOKEN_EXPIRES_MINUTES: int = 10080
+    SESSION_COOKIE_SECURE: bool = True
+    SAMESITE: str = "strict"
+    SESSION_COOKIE_DOMAIN: str = ""
+    MAX_SESSIONS: int = 5
 
     # RATE_LIMITER
-    RATE_LIMIT_REGISTER: int
-    RATE_LIMIT_LOGIN_OR_REFRESH: int
-    RATE_LIMIT_USER_CHANGES: int
-    RATE_LIMIT_GET_USER_INFO: int
+    RATE_LIMIT_REGISTER: int = 5
+    RATE_LIMIT_LOGIN_OR_REFRESH: int = 10
+    RATE_LIMIT_USER_CHANGES: int = 2
+    RATE_LIMIT_GET_USER_INFO: int = 4
 
     @property
     def SECRET_KEY(self) -> str:
